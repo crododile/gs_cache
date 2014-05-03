@@ -17,9 +17,9 @@ class Proxy
     end
   end
   
-  def handle_request(request)
+  def handle_request(to_client)
     
-    line1 = request.readline
+    line1 = to_client.readline
     parts = line1.split(' ')
     verb = parts[0].downcase
     url = parts[1]
@@ -30,9 +30,11 @@ class Proxy
         
     http = Net::HTTP.new(uri.host)          # Create a connection
     res = http.send(verb, uri.path)      # Request the file
-    p res.body
-    @proxy_server.write(res)
-   
+    
+    to_client.write(res.read_body)
+    
+    to_client.close
+    http.close
    
   end
  
