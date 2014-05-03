@@ -1,0 +1,1 @@
+File.delete('cache.yaml','size.txt','times.yaml')

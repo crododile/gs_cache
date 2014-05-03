@@ -103,12 +103,8 @@ class Proxy
         @count -= @cache[to_remove].length
         p @count
         @cache.delete(to_remove)
-   end
-    
+   end    
   end
-
-
-  
  
 end
 
