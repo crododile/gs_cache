@@ -82,7 +82,7 @@ class Proxy
     
     @times[url] = Time.now
     http = Net::HTTP.new(uri.host)  
-    res = http.send(verb, uri.path)     
+    res = http.send(verb, uri.request_uri)     
     res_body = res.read_body
     p url  
     Thread.exclusive do #synchronize cache cleaning and updating
