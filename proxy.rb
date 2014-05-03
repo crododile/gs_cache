@@ -30,7 +30,7 @@ class Proxy
           }
       end   
       @proxy_server = TCPServer.new port
-      p "proxy cache runnning on " + port.to_s
+      p " proxy cache runnning on " + port.to_s
       loop {
         Thread.new (@proxy_server.accept) do |request|
           handle_request request
