@@ -8,23 +8,18 @@ require 'thread'
 class Proxy
 
   def run(port)
-    Thread.abort_on_exception = true
-    
+    # Thread.abort_on_exception = true
     begin
       begin
         @cache = YAML.load_file('cache.yaml') || {}
         rescue
         @cache = {}
       end
-      
       begin
         @times = YAML.load_file('times.yaml') || {}
         rescue
         @times = {}
       end
-      
-      @semaphore = Mutex.new
-
       if File.file?("size.txt") #holds byte size of cached data
         File.open('size.txt','r'){ |f|
           @count = f.read.to_i
@@ -34,27 +29,22 @@ class Proxy
           @count = f.read.to_f
           }
       end   
-      
-      p @count
-      p @cache.keys
-
       @proxy_server = TCPServer.new port
-      p @proxy_server
+      p "proxy cache runnning on " + port.to_s
       loop {
         Thread.new (@proxy_server.accept) do |request|
           handle_request request
         end
       }
     rescue Exception => e
+      p e
       puts "EXCEPTION: #{e.inspect}"
       puts "MESSAGE: #{e.message}" 
       
     ensure
       @times_file = File.open('times.yaml','w') 
       YAML.dump(@times, @times_file)
-      @times_file.close()
-      
-      
+      @times_file.close()    
       @cache_file = File.open('cache.yaml','w') 
       YAML.dump(@cache, @cache_file)
       @cache_file.close()
@@ -68,9 +58,7 @@ class Proxy
   
   def handle_request(to_client)
     res_body = get_response(to_client)
-    
-    to_client.write(res_body)  #write body to client
-        
+    to_client.write(res_body)
     to_client.close
   end
 
@@ -79,16 +67,20 @@ class Proxy
     parts = line1.split(' ')
     verb = parts[0].downcase
     url = parts[1]
-    @times[url] = Time.now
-    
+   
     if @cache[url]
+      @times[url] = Time.now
       p url
       p 'cache hit!'
       return @cache[url]
     end
+    uri = URI::parse url  
+    # this host breaks the cache when we try to remove it, don't put it in..response too large?
+    return if uri.host == "www.google-analytics.com"
+    # these verbs also cause problems
+    return if verb == 'connect' || verb == 'post'
     
-    uri = URI::parse url
-        
+    @times[url] = Time.now
     http = Net::HTTP.new(uri.host)  
     res = http.send(verb, uri.path)     
     res_body = res.read_body
@@ -96,30 +88,21 @@ class Proxy
     Thread.exclusive do
       manage_cache(res.body.length)
     end
-
     @cache[url] = res_body
-    p 'page cached'
+    p 'cached '+ url
     @count += res_body.length  
-    
-    p @cache.keys
-    
     return res_body
-
   end
   
   def manage_cache(incoming)
-    while @count > 1000000 - incoming
-
+    while @count > 5000000 - incoming
         p 'cache too full'
-    
         to_remove = @times.key(@times.values.min)
         @times.delete(to_remove)
         p "removing " + to_remove
-        
         @count -= @cache[to_remove].length
         p @count
         @cache.delete(to_remove)
-
    end
     
   end
