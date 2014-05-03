@@ -85,12 +85,12 @@ class Proxy
     res = http.send(verb, uri.path)     
     res_body = res.read_body
     p url  
-    Thread.exclusive do #synchronize cache cleaning
+    Thread.exclusive do #synchronize cache cleaning and updating
       manage_cache(res.body.length)
-    end
-    @cache[url] = res_body
-    p 'cached '+ url
-    @count += res_body.length  
+      @cache[url] = res_body
+      p 'cached '+ url
+      @count += res_body.length 
+    end 
     return res_body
   end
   
