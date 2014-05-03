@@ -8,7 +8,7 @@ require 'thread'
 class Proxy
 
   def run(port)
-    @semaphore = Mutex.new
+    Thread.abort_on_exception = true
     
     begin
       begin
@@ -16,9 +16,28 @@ class Proxy
         rescue
         @cache = {}
       end
-      @cache_file = File.open('cache.yaml','w') 
+      
+      begin
+        @times = YAML.load_file('times.yaml') || {}
+        rescue
+        @times = {}
+      end
+      
+      @semaphore = Mutex.new
+
+      if File.file?("size.txt") #holds byte size of cached data
+        File.open('size.txt','r'){ |f|
+          @count = f.read.to_i
+          } 
+      else 
+        File.open('size.txt','w+'){ |f| #create file if it doesnt exist
+          @count = f.read.to_f
+          }
+      end   
+      
+      p @count
       p @cache.keys
-      p port
+
       @proxy_server = TCPServer.new port
       p @proxy_server
       loop {
@@ -26,10 +45,24 @@ class Proxy
           handle_request request
         end
       }
+    rescue Exception => e
+      puts "EXCEPTION: #{e.inspect}"
+      puts "MESSAGE: #{e.message}" 
+      
     ensure
-      p @cache.keys
+      @times_file = File.open('times.yaml','w') 
+      YAML.dump(@times, @times_file)
+      @times_file.close()
+      
+      
+      @cache_file = File.open('cache.yaml','w') 
       YAML.dump(@cache, @cache_file)
       @cache_file.close()
+      File.open('size.txt','w+'){ |f|
+        p 'writing'
+        p @count
+        f.syswrite(@count)
+      }
     end
   end
   
@@ -39,7 +72,6 @@ class Proxy
     to_client.write(res_body)  #write body to client
         
     to_client.close
-    http.close
   end
 
   def get_response(to_client)
@@ -47,35 +79,49 @@ class Proxy
     parts = line1.split(' ')
     verb = parts[0].downcase
     url = parts[1]
+    @times[url] = Time.now
     
     if @cache[url]
-      p 'cache hit'
       p url
+      p 'cache hit!'
       return @cache[url]
     end
     
     uri = URI::parse url
-    
-    p uri.host, uri.path
         
-    http = Net::HTTP.new(uri.host)          # Create a connection
-    res = http.send(verb, uri.path)     # Request the file
+    http = Net::HTTP.new(uri.host)  
+    res = http.send(verb, uri.path)     
     res_body = res.read_body
-    p url
-    @cache[url] = res_body
-    p @cache.keys
+    p url  
+    Thread.exclusive do
+      manage_cache(res.body.length)
+    end
 
-    manage_cache 
+    @cache[url] = res_body
+    p 'page cached'
+    @count += res_body.length  
+    
+    p @cache.keys
     
     return res_body
 
   end
   
-  def manage_cache
-    p 'cache miss'
-    semaphore.syncronize{YAML.dump(@cache, @cache_file)}
+  def manage_cache(incoming)
+    while @count > 1000000 - incoming
+
+        p 'cache too full'
     
-    p File.size?(@cache_file).to_f / 1024000   
+        to_remove = @times.key(@times.values.min)
+        @times.delete(to_remove)
+        p "removing " + to_remove
+        
+        @count -= @cache[to_remove].length
+        p @count
+        @cache.delete(to_remove)
+
+   end
+    
   end
 
 
