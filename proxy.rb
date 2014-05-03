@@ -2,10 +2,14 @@ require 'net/http'
 require 'debugger'
 require 'socket'
 require 'yaml'
+require 'thread'
+
 
 class Proxy
 
   def run(port)
+    @semaphore = Mutex.new
+    
     begin
       begin
         @cache = YAML.load_file('cache.yaml') || {}
@@ -69,7 +73,9 @@ class Proxy
   
   def manage_cache
     p 'cache miss'
-    # p File.size?(@cache_file).to_f / 1024000   
+    semaphore.syncronize{YAML.dump(@cache, @cache_file)}
+    
+    p File.size?(@cache_file).to_f / 1024000   
   end
 
 
