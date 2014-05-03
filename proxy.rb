@@ -8,38 +8,58 @@ require 'thread'
 class Proxy
 
   def run(port)
-    @semaphore = Mutex.new
-    
+    # Thread.abort_on_exception = true
     begin
       begin
         @cache = YAML.load_file('cache.yaml') || {}
         rescue
         @cache = {}
       end
-      @cache_file = File.open('cache.yaml','w') 
-      p @cache.keys
-      p port
+      begin
+        @times = YAML.load_file('times.yaml') || {}
+        rescue
+        @times = {}
+      end
+      if File.file?("size.txt") #holds byte size of cached data
+        File.open('size.txt','r'){ |f|
+          @count = f.read.to_i
+          } 
+      else 
+        File.open('size.txt','w+'){ |f| #create file if it doesnt exist
+          @count = f.read.to_f
+          }
+      end   
       @proxy_server = TCPServer.new port
-      p @proxy_server
+      p " proxy cache runnning on " + port.to_s
       loop {
         Thread.new (@proxy_server.accept) do |request|
           handle_request request
         end
       }
+    rescue Exception => e
+      p e
+      puts "EXCEPTION: #{e.inspect}"
+      puts "MESSAGE: #{e.message}" 
+      
     ensure
-      p @cache.keys
+      @times_file = File.open('times.yaml','w') 
+      YAML.dump(@times, @times_file)
+      @times_file.close()    
+      @cache_file = File.open('cache.yaml','w') 
       YAML.dump(@cache, @cache_file)
       @cache_file.close()
+      File.open('size.txt','w+'){ |f|
+        p 'writing'
+        p @count
+        f.syswrite(@count)
+      }
     end
   end
   
   def handle_request(to_client)
     res_body = get_response(to_client)
-    
-    to_client.write(res_body)  #write body to client
-        
+    to_client.write(res_body)
     to_client.close
-    http.close
   end
 
   def get_response(to_client)
@@ -47,35 +67,44 @@ class Proxy
     parts = line1.split(' ')
     verb = parts[0].downcase
     url = parts[1]
-    
+   
     if @cache[url]
-      p 'cache hit'
+      @times[url] = Time.now
       p url
+      p 'cache hit!'
       return @cache[url]
     end
+    uri = URI::parse url  
+    # this host breaks the cache when we try to remove it, don't put it in..response too large?
+    return if uri.host == "www.google-analytics.com"
+    # these verbs also cause problems
+    return if verb == 'connect' || verb == 'post'
     
-    uri = URI::parse url
-    
-    p uri.host, uri.path
-        
-    http = Net::HTTP.new(uri.host)          # Create a connection
-    res = http.send(verb, uri.path)     # Request the file
+    @times[url] = Time.now
+    http = Net::HTTP.new(uri.host)  
+    res = http.send(verb, uri.path)     
     res_body = res.read_body
-    p url
+    p url  
+    Thread.exclusive do
+      manage_cache(res.body.length)
+    end
     @cache[url] = res_body
-    p @cache.keys
-
-    manage_cache 
-    
+    p 'cached '+ url
+    @count += res_body.length  
     return res_body
-
   end
   
-  def manage_cache
-    p 'cache miss'
-    semaphore.syncronize{YAML.dump(@cache, @cache_file)}
+  def manage_cache(incoming)
+    while @count > 5000000 - incoming
+        p 'cache too full'
+        to_remove = @times.key(@times.values.min)
+        @times.delete(to_remove)
+        p "removing " + to_remove
+        @count -= @cache[to_remove].length
+        p @count
+        @cache.delete(to_remove)
+   end
     
-    p File.size?(@cache_file).to_f / 1024000   
   end
 
 
