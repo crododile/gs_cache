@@ -8,15 +8,15 @@ require 'thread'
 class Proxy
 
   def run(port)
-    # Thread.abort_on_exception = true
+    # Thread.abort_on_exception = true  COMMENTED OUT TO PREVENT CRASHING, IS USEFUL AT TIMES
     begin
       begin
-        @cache = YAML.load_file('cache.yaml') || {}
+        @cache = YAML.load_file('cache.yaml') || {}  #Cache loaded into memory
         rescue
         @cache = {}
       end
       begin
-        @times = YAML.load_file('times.yaml') || {}
+        @times = YAML.load_file('times.yaml') || {}  #Access times for lru clearing loaded in
         rescue
         @times = {}
       end
@@ -41,7 +41,7 @@ class Proxy
       puts "EXCEPTION: #{e.inspect}"
       puts "MESSAGE: #{e.message}" 
       
-    ensure
+    ensure #WRITE TO FILES PRESENT STATE OF CACHE ON CLOSING
       @times_file = File.open('times.yaml','w') 
       YAML.dump(@times, @times_file)
       @times_file.close()    
@@ -77,7 +77,7 @@ class Proxy
     uri = URI::parse url  
     # this host breaks the cache when we try to remove it, don't put it in..response too large?
     return if uri.host == "www.google-analytics.com"
-    # these verbs also cause problems
+    # not interested in these verbs
     return if verb == 'connect' || verb == 'post'
     
     @times[url] = Time.now
@@ -85,7 +85,7 @@ class Proxy
     res = http.send(verb, uri.path)     
     res_body = res.read_body
     p url  
-    Thread.exclusive do
+    Thread.exclusive do #synchronize cache cleaning
       manage_cache(res.body.length)
     end
     @cache[url] = res_body
