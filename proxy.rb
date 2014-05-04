@@ -1,8 +1,7 @@
 require 'net/http'
-require 'debugger'
 require 'socket'
 require 'yaml'
-require 'thread'
+
 
 
 class Proxy
@@ -85,12 +84,12 @@ class Proxy
     res = http.send(verb, uri.request_uri)     
     res_body = res.read_body
     p url  
-    Thread.exclusive do #synchronize cache cleaning and updating
-      manage_cache(res.body.length)
-      @cache[url] = res_body
-      p 'cached '+ url
-      @count += res_body.length 
-    end 
+
+    manage_cache(res.body.length)
+    @cache[url] = res_body
+    p 'cached '+ url
+    @count += res_body.length 
+
     return res_body
   end
   
